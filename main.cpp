@@ -7,6 +7,7 @@ using namespace std;
 
 class i_formatter {
 public:
+    typedef shared_ptr<i_formatter> ptr;
     virtual ~i_formatter() = default;
     virtual string format(string& text) = 0;
 };
@@ -35,7 +36,7 @@ class file_stream_service : public i_stream_service {
     ofstream ofs;
 public:
     void open() override {
-        ofs.open("log1.txt", ofstream::out | ofstream::app);
+        ofs.open("log2.txt", ofstream::out | ofstream::app);
     }
 
     void log(const string &text) override {
@@ -62,30 +63,60 @@ public:
     }
 };
 
+class i_injector {
+public:
+    virtual ~i_injector() = default;
+    virtual i_stream_service::ptr construct_stream_service() = 0;
+    virtual i_formatter::ptr construct_formatter() = 0;
+};
+
 class logger_engine {
-    i_stream_service &streamService;
-    i_formatter &formatter;
+    i_stream_service::ptr streamService;
+    i_formatter:: ptr formatter;
 
 public:
-    logger_engine(i_stream_service &streamService, i_formatter &formatter) : streamService(streamService),
+/*    logger_engine(i_stream_service &streamService, i_formatter &formatter) : streamService(streamService),
                                                                              formatter(formatter) {
         streamService.open();
+    }*/
+
+    logger_engine(i_injector& injector) {
+        streamService = injector.construct_stream_service();
+        formatter = injector.construct_formatter();
+        streamService->open();
     }
 
     ~logger_engine() {
-        streamService.close();
+        streamService->close();
     }
 
     void log(string line) {
-        string formatedLine = formatter.format(line);
-        streamService.log(formatedLine);
+        string formatedLine = formatter->format(line);
+        streamService->log(formatedLine);
+    }
+};
+
+class console_injector: public i_injector {
+    i_stream_service::ptr construct_stream_service() override {
+        return i_stream_service::ptr(new console_stream_service);
+    }
+    virtual i_formatter::ptr construct_formatter() override {
+        return i_formatter::ptr(new formatter);
+    }
+};
+
+class file_injector: public i_injector {
+    i_stream_service::ptr construct_stream_service() override {
+        return i_stream_service::ptr(new file_stream_service);
+    }
+    virtual i_formatter::ptr construct_formatter() override {
+        return i_formatter::ptr(new formatter);
     }
 };
 
 int main() {
-    file_stream_service css;
-    formatter f;
-    logger_engine l(css, f);
+    file_injector ci;
+    logger_engine l(ci);
     l.log("first line");
     l.log("second line");
     return 0;
