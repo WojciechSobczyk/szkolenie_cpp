@@ -1,123 +1,81 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <memory>
 
 using namespace std;
 
-class i_formatter {
+class i_log_buffer {
 public:
-    typedef shared_ptr<i_formatter> ptr;
-    virtual ~i_formatter() = default;
-    virtual string format(string& text) = 0;
-};
-
-class formatter : public i_formatter {
-    string format (string& text) override {
-        text += "\n";
-        return text;
-    }
-};
-
-class i_stream_service {
-public:
-    typedef shared_ptr<i_stream_service> ptr;
-
-    virtual ~i_stream_service() = default;
-
-    virtual void log(const string &text) = 0;
-
+    virtual ~i_log_buffer() = default;
     virtual void open() = 0;
-
+    virtual void write(const string &) = 0;
     virtual void close() = 0;
 };
 
-class file_stream_service : public i_stream_service {
+class console_buff: public i_log_buffer {
+public:
+    void open() override {}
+    void write(const string &line) override {
+        cout << line;
+    }
+    virtual void close() override {}
+};
+
+class file_buff: public i_log_buffer {
+    string fname;
     ofstream ofs;
 public:
+    file_buff(const string &fname): fname(fname) {}
     void open() override {
-        ofs.open("log2.txt", ofstream::out | ofstream::app);
+        ofs.open("log.txt", ofstream::out | ofstream::app);
     }
-
-    void log(const string &text) override {
-        ofs << text;
+    void write(const string &line) override {
+        ofs << line;
     }
-
     void close() override {
         ofs.close();
     }
 };
 
-class console_stream_service : public i_stream_service {
+class i_formatter {
 public:
-    void log(const string &text) override {
-        cout << text;
-    }
-
-    void open() override {
-
-    }
-
-    void close() override {
-
-    }
+    virtual ~i_formatter() = default;
+    virtual string format(const string &) = 0;
 };
 
-class i_injector {
+class endliner: public i_formatter {
 public:
-    virtual ~i_injector() = default;
-    virtual i_stream_service::ptr construct_stream_service() = 0;
-    virtual i_formatter::ptr construct_formatter() = 0;
+    string format(const string &str) override {
+        string res(str);
+        res.append("\n");
+        return res;
+    }
 };
 
 class logger_engine {
-    i_stream_service::ptr streamService;
-    i_formatter:: ptr formatter;
-
+    i_log_buffer &buff;
+    i_formatter &format;
 public:
-/*    logger_engine(i_stream_service &streamService, i_formatter &formatter) : streamService(streamService),
-                                                                             formatter(formatter) {
-        streamService.open();
-    }*/
-
-    logger_engine(i_injector& injector) {
-        streamService = injector.construct_stream_service();
-        formatter = injector.construct_formatter();
-        streamService->open();
+    logger_engine(i_log_buffer &buff, i_formatter &format)
+            : buff(buff), format(format) {
+        buff.open();
     }
-
     ~logger_engine() {
-        streamService->close();
+        buff.close();
     }
-
-    void log(string line) {
-        string formatedLine = formatter->format(line);
-        streamService->log(formatedLine);
+    void log(const string& line) {
+        buff.write(format.format(line));
     }
 };
 
-class console_injector: public i_injector {
-    i_stream_service::ptr construct_stream_service() override {
-        return i_stream_service::ptr(new console_stream_service);
-    }
-    virtual i_formatter::ptr construct_formatter() override {
-        return i_formatter::ptr(new formatter);
-    }
-};
-
-class file_injector: public i_injector {
-    i_stream_service::ptr construct_stream_service() override {
-        return i_stream_service::ptr(new file_stream_service);
-    }
-    virtual i_formatter::ptr construct_formatter() override {
-        return i_formatter::ptr(new formatter);
-    }
-};
-
-int main() {
-    file_injector ci;
-    logger_engine l(ci);
-    l.log("first line");
-    l.log("second line");
+int main(int argc, const char *argv[])
+{
+    console_buff cb;
+    file_buff fb("log.txt");
+    endliner e;
+    logger_engine l1(cb, e);
+    l1.log("some line");
+    logger_engine l2(fb, e);
+    l2.log("some line");
     return 0;
 }
